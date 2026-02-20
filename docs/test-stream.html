@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Test SSE streaming /ai/chat/stream</title>
+  <style>
+    body { font-family: system-ui; max-width: 720px; margin: 1rem auto; padding: 0 1rem; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+    .event { margin: 0.5rem 0; padding: 0.5rem; border-left: 4px solid #4a9; }
+    .event.started { border-color: #4a9; }
+    .event.partial { border-color: #fa0; }
+    .event.complete { border-color: #4a4; }
+    .ts { font-size: 0.85rem; color: #666; }
+    input, button { padding: 0.5rem 1rem; margin-right: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Test streaming POST /ai/chat/stream</h1>
+  <p>Backend debe estar en <strong id="url">http://localhost:8080</strong>. Si usas otro origen, ábrelo desde tu frontend (ej. localhost:3000) para que CORS permita la petición.</p>
+  <p>
+    <input id="input" type="text" value="Quiero una cafetería en Madrid" size="40" />
+    <button id="btn">Enviar (stream)</button>
+  </p>
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const inputEl = document.getElementById('input');
+    const url = 'http://localhost:8080';
+
+    function log(eventType, data, elapsed) {
+      const div = document.createElement('div');
+      div.className = 'event ' + eventType;
+      div.innerHTML = '<span class="ts">' + elapsed + ' ms — event: ' + eventType + '</span><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+      logEl.appendChild(div);
+    }
+
+    document.getElementById('btn').onclick = async () => {
+      logEl.innerHTML = '';
+      const start = Date.now();
+      log('info', { message: 'Conectando a ' + url + '/ai/chat/stream...' }, 0);
+
+      try {
+        const res = await fetch(url + '/ai/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: inputEl.value.trim() || 'hola' }),
+        });
+        if (!res.ok) {
+          log('error', { status: res.status, statusText: res.statusText }, Date.now() - start);
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          for (const part of parts) {
+            if (!part.trim()) continue;
+            let eventType = 'message';
+            let dataStr = '';
+            for (const line of part.split('\n')) {
+              if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+              else if (line.startsWith('data: ')) dataStr = line.slice(6);
+            }
+            try {
+              const data = dataStr ? JSON.parse(dataStr) : {};
+              log(eventType, data, Date.now() - start);
+            } catch (_) {}
+          }
+        }
+      } catch (e) {
+        log('error', { error: e.message }, Date.now() - start);
+      }
+    };
+  </script>
+</body>
+</html>
