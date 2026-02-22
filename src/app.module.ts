@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { AiModule } from './ai/ai.module';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
+import { FeedModule } from './feed/feed.module';
 import { ProjectModule } from './project/project.module';
 import { RedisModule } from './redis/redis.module';
 
@@ -36,6 +37,7 @@ import { RedisModule } from './redis/redis.module';
     AiModule,
     AuthModule,
     ChatModule,
+    FeedModule,
     ProjectModule,
   ],
   controllers: [AppController],
