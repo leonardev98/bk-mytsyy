@@ -11,6 +11,7 @@ Content-Type: application/json
 
 ```json
 {
+  "sessionId": "uuid-opcional-para-agente-estrategico",
   "message": "Tengo una idea de app para pequeños comercios",
   "history": [
     { "role": "user", "content": "Hola" },
@@ -24,12 +25,13 @@ Content-Type: application/json
 
 | Campo | Tipo | Requerido | Descripción |
 |-------|------|-----------|-------------|
+| `sessionId` | string | no | Si se envía, se usa el **agente estratégico** (memoria en Redis, state machine, progreso). Mismo valor en toda la conversación. Ver [Frontend agente estratégico](./frontend-strategic-agent.md). |
 | `message` | string | sí | Mensaje actual del usuario (máx 4000 caracteres). |
 | `history` | `{ role: "user" \| "assistant", content: string }[]` | no | Últimos mensajes de la conversación para que la IA detecte el modo. |
 | `selectedProposal` | `{ title, pitch?, whyItWins? } \| null` | no | Cuando el usuario eligió una propuesta (modo EXECUTION), enviar la seleccionada. |
 | `attachedContent` | string | no | Texto extraído de un archivo adjunto (PDF, TXT, Word). Si se envía, la IA responde en **execution** directo (roadmap 30 días), sin preguntas ni 3 propuestas. Máx 50.000 caracteres. Ver [Flujo documento](./frontend-document-flow-prompt.md). |
 
-La IA detecta automáticamente el modo según el mensaje, el historial y si hay `attachedContent`. **1 llamada por turno.**
+La IA detecta automáticamente el modo según el mensaje, el historial y si hay `attachedContent`. **1 llamada por turno.** Con `sessionId`, la respuesta puede incluir además `conversationState`, `businessContext`, `completenessScore` (ver [Frontend agente estratégico](./frontend-strategic-agent.md)).
 
 ---
 

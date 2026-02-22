@@ -1,0 +1,23 @@
+# Redis para sesiones del agente conversacional (desarrollo local).
+# Uso: docker compose up -d redis
+# Luego en .env: REDIS_URL=redis://localhost:6379
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: bk-mytsyy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    # Sin contraseña en local; en producción usar --requirepass o variable de entorno
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis_data:

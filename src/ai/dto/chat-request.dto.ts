@@ -10,6 +10,15 @@ export class ConversationTurnDto {
 }
 
 export class AiChatRequestDto {
+  /**
+   * Si se envía, se usa el agente estratégico con memoria en Redis y state machine.
+   * Si no se envía, se usa el flujo legacy (solo LLM por turno).
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  sessionId?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(4000)
