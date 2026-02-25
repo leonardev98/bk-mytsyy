@@ -9,6 +9,7 @@ import { ChatModule } from './chat/chat.module';
 import { FeedModule } from './feed/feed.module';
 import { ProjectModule } from './project/project.module';
 import { RedisModule } from './redis/redis.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { RedisModule } from './redis/redis.module';
     ChatModule,
     FeedModule,
     ProjectModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService],

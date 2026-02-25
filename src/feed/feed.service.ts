@@ -1,13 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { publicUsername } from '../common/username.util';
 import { User } from '../user/entities/user.entity';
+import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreatePostDto } from './dto/create-post.dto';
+import { Comment } from './entities/comment.entity';
 import { Post } from './entities/post.entity';
 import { Reaction } from './entities/reaction.entity';
 
 export interface FeedPostResponse {
   id: string;
+  authorId: string;
   authorName: string;
   authorUsername?: string | null;
   authorAvatar?: string | null;
@@ -23,6 +32,18 @@ export interface FeedPostResponse {
   hasReacted?: boolean;
 }
 
+export interface FeedCommentResponse {
+  id: string;
+  postId: string;
+  parentId: string | null;
+  authorId: string;
+  authorName: string;
+  authorUsername: string | null;
+  authorAvatar: string | null;
+  text: string;
+  createdAt: string;
+}
+
 @Injectable()
 export class FeedService {
   constructor(
@@ -30,6 +51,8 @@ export class FeedService {
     private readonly postRepo: Repository<Post>,
     @InjectRepository(Reaction)
     private readonly reactionRepo: Repository<Reaction>,
+    @InjectRepository(Comment)
+    private readonly commentRepo: Repository<Comment>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
   ) {}
@@ -144,6 +167,118 @@ export class FeedService {
     return { reactionCount: count, hasReacted: true };
   }
 
+  /** Comprueba si el usuario puede ver (y comentar) la publicación. */
+  private canUserSeePost(post: Post, userId: string): boolean {
+    if (post.audience === 'public' || post.audience === 'builders') return true;
+    if (post.audience === 'only_me' && post.userId === userId) return true;
+    return false;
+  }
+
+  async getComments(
+    userId: string,
+    postId: string,
+    page: number = 1,
+    limit: number = 50,
+  ): Promise<{ comments: FeedCommentResponse[]; page: number; limit: number; total: number }> {
+    const post = await this.postRepo.findOne({ where: { id: postId } });
+    if (!post) throw new NotFoundException('Publicación no encontrada');
+    if (!this.canUserSeePost(post, userId)) {
+      throw new ForbiddenException('No tienes permiso para ver esta publicación');
+    }
+
+    const cappedLimit = Math.min(Math.max(1, limit), 100);
+    const skip = (Math.max(1, page) - 1) * cappedLimit;
+
+    const [comments, total] = await this.commentRepo.findAndCount({
+      where: { postId },
+      order: { createdAt: 'ASC' },
+      skip,
+      take: cappedLimit,
+    });
+
+    if (comments.length === 0) {
+      return { comments: [], page: Math.max(1, page), limit: cappedLimit, total: 0 };
+    }
+
+    const authorIds = [...new Set(comments.map((c) => c.userId))];
+    const users = await this.userRepo.find({
+      where: authorIds.map((id) => ({ id })),
+      select: ['id', 'name'],
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const feedComments: FeedCommentResponse[] = comments.map((c) => {
+      const author = userMap.get(c.userId);
+      return this.toFeedComment(c, author ?? null);
+    });
+
+    return {
+      comments: feedComments,
+      page: Math.max(1, page),
+      limit: cappedLimit,
+      total,
+    };
+  }
+
+  async createComment(
+    userId: string,
+    postId: string,
+    dto: CreateCommentDto,
+  ): Promise<FeedCommentResponse> {
+    const post = await this.postRepo.findOne({ where: { id: postId } });
+    if (!post) throw new NotFoundException('Publicación no encontrada');
+    if (!this.canUserSeePost(post, userId)) {
+      throw new ForbiddenException('No tienes permiso para comentar en esta publicación');
+    }
+
+    const text = (dto.text ?? '').trim();
+    if (!text) throw new BadRequestException('El texto del comentario no puede estar vacío');
+
+    let parentId: string | null = null;
+    if (dto.parentId != null && dto.parentId !== '') {
+      const parent = await this.commentRepo.findOne({
+        where: { id: dto.parentId, postId },
+      });
+      if (!parent) {
+        throw new BadRequestException(
+          'El comentario padre no existe o no pertenece a esta publicación',
+        );
+      }
+      parentId = parent.id;
+    }
+
+    const comment = this.commentRepo.create({
+      postId,
+      userId,
+      parentId,
+      text,
+    });
+    const saved = await this.commentRepo.save(comment);
+    const author = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['id', 'name'],
+    });
+    return this.toFeedComment(saved, author ?? null);
+  }
+
+  private toFeedComment(c: Comment, author: User | null): FeedCommentResponse {
+    return {
+      id: c.id,
+      postId: c.postId,
+      parentId: c.parentId ?? null,
+      authorId: c.userId,
+      authorName: author?.name ?? 'Usuario',
+      authorUsername: publicUsername({
+        username: null,
+        name: author?.name ?? null,
+        id: c.userId,
+      }),
+      authorAvatar: null,
+      text: c.text,
+      createdAt: c.createdAt.toISOString(),
+    };
+  }
+
   private async toFeedPost(
     post: Post,
     author: User | null,
@@ -153,8 +288,13 @@ export class FeedService {
     const resolvedAuthor = author ?? (await this.loadAuthorForPost(post));
     return {
       id: post.id,
+      authorId: post.userId,
       authorName: resolvedAuthor?.name ?? 'Usuario',
-      authorUsername: null,
+      authorUsername: publicUsername({
+        username: null,
+        name: resolvedAuthor?.name ?? null,
+        id: post.userId,
+      }),
       authorAvatar: null,
       time: post.createdAt.toISOString(),
       createdAt: post.createdAt.toISOString(),

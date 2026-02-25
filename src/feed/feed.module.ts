@@ -3,12 +3,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../user/entities/user.entity';
 import { FeedController } from './feed.controller';
 import { FeedService } from './feed.service';
+import { Comment } from './entities/comment.entity';
 import { Post } from './entities/post.entity';
 import { Reaction } from './entities/reaction.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Post, Reaction, User]),
+    TypeOrmModule.forFeature([Post, Reaction, Comment, User]),
   ],
   controllers: [FeedController],
   providers: [FeedService],
